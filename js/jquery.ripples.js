@@ -10,7 +10,7 @@
 	var $window = $(window); // There is only one window, so why not cache the jQuery-wrapped window?
 
 	function isPercentage(str) {
-		return str[str.length - 1] == '%';
+		return str[str.length - 1] === '%';
 	}
 
 	function hasWebGLSupport() {
@@ -22,8 +22,7 @@
 
 	var supportsWebGL = hasWebGLSupport();
 
-	function createProgram(vertexSource, fragmentSource, uniformValues)
-	{
+	function createProgram(vertexSource, fragmentSource, uniformValues) {
 		function compileSource(type, source) {
 			var shader = gl.createShader(type);
 			gl.shaderSource(shader, source);
@@ -49,7 +48,8 @@
 		program.locations = {};
 		gl.useProgram(program.id);
 		gl.enableVertexAttribArray(0);
-		var name, type, regex = /uniform (\w+) (\w+)/g, shaderCode = vertexSource + fragmentSource;
+		var name, regex = /uniform (\w+) (\w+)/g, shaderCode = vertexSource + fragmentSource;
+		var match;
 		while ((match = regex.exec(shaderCode)) != null) {
 			name = match[2];
 			program.locations[name] = gl.getUniformLocation(program.id, name);
@@ -75,10 +75,12 @@
 		this.$el = $(el);
 		this.$el.addClass('jquery-ripples');
 
-		// If this element doesn't have a background image, don't apply this effect to it
+		// Will use background-image when set, else background-color
 		var backgroundUrl = (/url\(["']?([^"']*)["']?\)/.exec(this.$el.css('background-image')));
-		if (backgroundUrl == null) return;
-		backgroundUrl = backgroundUrl[1];
+		var backgroundColor = this.$el.css('background-color');
+		if (backgroundUrl != null) {
+			backgroundUrl = backgroundUrl[1];
+		}
 
 		this.interactive = options.interactive;
 		this.resolution = options.resolution || 256;
@@ -109,16 +111,16 @@
 		var linearSupport = gl.getExtension('OES_texture_float_linear');
 
 		// Init events
-		$(window).on('resize', function() {
-			if (that.$el.innerWidth() != that.canvas.width || that.$el.innerHeight() != that.canvas.height) {
+		$(window).on('resize', function () {
+			if (that.$el.innerWidth() !== that.canvas.width || that.$el.innerHeight() !== that.canvas.height) {
 				canvas.width = that.$el.innerWidth();
 				canvas.height = that.$el.innerHeight();
 			}
 		});
 
-		this.$el.on('mousemove.ripples', function(e) {
+		this.$el.on('mousemove.ripples', function (e) {
 			if (that.visible && that.running && that.interactive) that.dropAtMouse(e, that.dropRadius, 0.01);
-		}).on('mousedown.ripples', function(e) {
+		}).on('mousedown.ripples', function (e) {
 			if (that.visible && that.running && that.interactive) that.dropAtMouse(e, that.dropRadius * 1.5, 0.14);
 		});
 
@@ -141,7 +143,7 @@
 			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.resolution, this.resolution, 0, gl.RGBA, gl.FLOAT, null);
 
 			gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-			if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE) {
+			if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
 				throw new Error('Rendering to this texture is not supported (incomplete framebuffer)');
 			}
 
@@ -169,11 +171,11 @@
 		// Init textures
 		var image = new Image;
 		image.crossOrigin = '';
-		image.onload = function() {
+		image.onload = function () {
 			gl = that.context;
 
 			function isPowerOfTwo(x) {
-				return (x & (x - 1)) == 0;
+				return (x & (x - 1)) === 0;
 			}
 
 			var wrapping = (isPowerOfTwo(image.width) && isPowerOfTwo(image.height)) ? gl.REPEAT : gl.CLAMP_TO_EDGE;
@@ -184,19 +186,33 @@
 			var texture = gl.createTexture();
 
 			gl.bindTexture(gl.TEXTURE_2D, texture);
-			gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapping);
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrapping);
-			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+			if (backgroundUrl) {
+				gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapping);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrapping);
+				gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
 
+			} else {
+				var rgb = /\(([^)]+)\)/.exec(backgroundColor);
+				var data = new Uint8Array([rgb[0], rgb[1], rgb[2], 0]);
+				gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+			}
 			that.backgroundTexture = texture;
 
 			// Everything loaded successfully - hide the CSS background image
 			that.$el.css('backgroundImage', 'none');
 		};
-		image.src = backgroundUrl;
+
+		if (backgroundUrl) {
+			image.src = backgroundUrl;
+		} else {
+			image.backgroundColor = backgroundColor;
+			image.onload();
+		}
 
 		this.visible = true;
 
@@ -221,7 +237,7 @@
 
 	Ripples.prototype = {
 
-		step: function() {
+		step: function () {
 			gl = this.context;
 
 			if (!this.visible || !this.backgroundTexture) return;
@@ -235,13 +251,13 @@
 			this.render();
 		},
 
-		drawQuad: function() {
+		drawQuad: function () {
 			gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
 			gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 			gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
 		},
 
-		render: function() {
+		render: function () {
 			gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
 			gl.enable(gl.BLEND);
@@ -262,12 +278,12 @@
 			gl.disable(gl.BLEND);
 		},
 
-		update: function() {
+		update: function () {
 			gl.viewport(0, 0, this.resolution, this.resolution);
 
 			for (var i = 0; i < 2; i++) {
 				gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[i]);
-				bindTexture(this.textures[1-i]);
+				bindTexture(this.textures[1 - i]);
 				gl.useProgram(this.updateProgram[i].id);
 
 				this.drawQuad();
@@ -276,49 +292,50 @@
 			gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 		},
 
-		computeTextureBoundaries: function() {
+		computeTextureBoundaries: function () {
 			var backgroundSize = this.$el.css('background-size');
 			var backgroundAttachment = this.$el.css('background-attachment');
 			var backgroundPosition = this.$el.css('background-position').split(' ');
 
 			// Here the 'window' is the element which the background adapts to
 			// (either the chrome window or some element, depending on attachment)
-			var parElement = backgroundAttachment == 'fixed' ? $window : this.$el;
-			var winOffset = parElement.offset() || {left: pageXOffset, top: pageYOffset};
+			var parElement = backgroundAttachment === 'fixed' ? $window : this.$el;
+			var winOffset = parElement.offset() || { left: pageXOffset, top: pageYOffset };
 			var winWidth = parElement.innerWidth();
 			var winHeight = parElement.innerHeight();
 
 			// TODO: background-clip
-			if (backgroundSize == 'cover') {
-				var scale = Math.max(winWidth / this.backgroundWidth, winHeight / this.backgroundHeight);
+			var backgroundWidth;
+			var backgroundHeight;
+			var scale;
 
-				var backgroundWidth = this.backgroundWidth * scale;
-				var backgroundHeight = this.backgroundHeight * scale;
+			if (backgroundSize === 'cover') {
+				scale = Math.max(winWidth / this.backgroundWidth, winHeight / this.backgroundHeight);
+				backgroundWidth = this.backgroundWidth * scale;
+				backgroundHeight = this.backgroundHeight * scale;
 			}
-			else if (backgroundSize == 'contain') {
-				var scale = Math.min(winWidth / this.backgroundWidth, winHeight / this.backgroundHeight);
-
-				var backgroundWidth = this.backgroundWidth * scale;
-				var backgroundHeight = this.backgroundHeight * scale;
+			else if (backgroundSize === 'contain') {
+				scale = Math.min(winWidth / this.backgroundWidth, winHeight / this.backgroundHeight);
+				backgroundWidth = this.backgroundWidth * scale;
+				backgroundHeight = this.backgroundHeight * scale;
 			}
 			else {
 				backgroundSize = backgroundSize.split(' ');
-				var backgroundWidth = backgroundSize[0] || '';
-				var backgroundHeight = backgroundSize[1] || backgroundWidth;
-
+				backgroundWidth = backgroundSize[0] || '';
+				backgroundHeight = backgroundSize[1] || backgroundWidth;
 				if (isPercentage(backgroundWidth)) backgroundWidth = winWidth * parseFloat(backgroundWidth) / 100;
-				else if (backgroundWidth != 'auto') backgroundWidth = parseFloat(backgroundWidth);
+				else if (backgroundWidth !== 'auto') backgroundWidth = parseFloat(backgroundWidth);
 
 				if (isPercentage(backgroundHeight)) backgroundHeight = winHeight * parseFloat(backgroundHeight) / 100;
-				else if (backgroundHeight != 'auto') backgroundHeight = parseFloat(backgroundHeight);
+				else if (backgroundHeight !== 'auto') backgroundHeight = parseFloat(backgroundHeight);
 
-				if (backgroundWidth == 'auto' && backgroundHeight == 'auto') {
+				if (backgroundWidth === 'auto' && backgroundHeight === 'auto') {
 					backgroundWidth = this.backgroundWidth;
 					backgroundHeight = this.backgroundHeight;
 				}
 				else {
-					if (backgroundWidth == 'auto') backgroundWidth = this.backgroundWidth * (backgroundHeight / this.backgroundHeight);
-					if (backgroundHeight == 'auto') backgroundHeight = this.backgroundHeight * (backgroundWidth / this.backgroundWidth);
+					if (backgroundWidth === 'auto') backgroundWidth = this.backgroundWidth * (backgroundHeight / this.backgroundHeight);
+					if (backgroundHeight === 'auto') backgroundHeight = this.backgroundHeight * (backgroundWidth / this.backgroundWidth);
 				}
 			}
 
@@ -326,9 +343,9 @@
 			var backgroundX = backgroundPosition[0] || '';
 			var backgroundY = backgroundPosition[1] || backgroundX;
 
-			if (backgroundX == 'left') backgroundX = winOffset.left;
-			else if (backgroundX == 'center') backgroundX = winOffset.left + winWidth / 2 - backgroundWidth / 2;
-			else if (backgroundX == 'right') backgroundX = winOffset.left + winWidth - backgroundWidth;
+			if (backgroundX === 'left') backgroundX = winOffset.left;
+			else if (backgroundX === 'center') backgroundX = winOffset.left + winWidth / 2 - backgroundWidth / 2;
+			else if (backgroundX === 'right') backgroundX = winOffset.left + winWidth - backgroundWidth;
 			else if (isPercentage(backgroundX)) {
 				backgroundX = winOffset.left + (winWidth - backgroundWidth) * parseFloat(backgroundX) / 100;
 			}
@@ -336,9 +353,9 @@
 				backgroundX = parseFloat(backgroundX);
 			}
 
-			if (backgroundY == 'top') backgroundY = winOffset.top;
-			else if (backgroundY == 'center') backgroundY = winOffset.top + winHeight / 2 - backgroundHeight / 2;
-			else if (backgroundY == 'bottom') backgroundY = winOffset.top + winHeight - backgroundHeight;
+			if (backgroundY === 'top') backgroundY = winOffset.top;
+			else if (backgroundY === 'center') backgroundY = winOffset.top + winHeight / 2 - backgroundHeight / 2;
+			else if (backgroundY === 'bottom') backgroundY = winOffset.top + winHeight - backgroundHeight;
 			else if (isPercentage(backgroundY)) {
 				backgroundY = winOffset.top + (winHeight - backgroundHeight) * parseFloat(backgroundY) / 100;
 			}
@@ -365,7 +382,7 @@
 			]);
 		},
 
-		initShaders: function() {
+		initShaders: function () {
 			var vertexShader = [
 				'attribute vec2 vertex;',
 				'varying vec2 coord;',
@@ -398,7 +415,7 @@
 				'}'
 			].join('\n'));
 
-			this.updateProgram = [0,0];
+			this.updateProgram = [0, 0];
 			this.updateProgram[0] = createProgram(vertexShader, [
 				'precision highp float;',
 
@@ -482,7 +499,7 @@
 			gl.uniform1f(this.renderProgram.locations.perturbance, this.perturbance);
 		},
 
-		dropAtMouse: function(e, radius, strength) {
+		dropAtMouse: function (e, radius, strength) {
 			this.drop(
 				e.pageX - this.$el.offset().left,
 				e.pageY - this.$el.offset().top,
@@ -491,10 +508,9 @@
 			);
 		},
 
-		drop: function(x, y, radius, strength) {
+		drop: function (x, y, radius, strength) {
 			var that = this;
-
-			gl = this.context;
+			gl = that.context;
 
 			var elWidth = this.$el.outerWidth();
 			var elHeight = this.$el.outerHeight();
@@ -530,37 +546,35 @@
 		},
 
 		// Actions
-		destroy: function() {
+		destroy: function () {
 			this.canvas.remove();
 			this.$el.off('.ripples');
 			this.$el.css('backgroundImage', '');
 			this.$el.removeClass('jquery-ripples').removeData('ripples');
 		},
 
-		show: function() {
+		show: function () {
 			this.$canvas.show();
 			this.$el.css('backgroundImage', 'none');
 			this.visible = true;
 		},
 
-		hide: function() {
+		hide: function () {
 			this.$canvas.hide();
 			this.$el.css('backgroundImage', '');
 			this.visible = false;
 		},
 
-		pause: function() {
+		pause: function () {
 			this.running = false;
 		},
 
-		play: function() {
+		play: function () {
 			this.running = true;
 		},
 
-		set: function(property, value)
-		{
-			switch (property)
-			{
+		set: function (property, value) {
+			switch (property) {
 				case 'interactive':
 					this.interactive = value;
 					break;
@@ -573,14 +587,14 @@
 
 	var old = $.fn.ripples;
 
-	$.fn.ripples = function(option) {
+	$.fn.ripples = function (option) {
 		if (!supportsWebGL) throw new Error('Your browser does not support WebGL or the OES_texture_float extension.');
 
 		var args = (arguments.length > 1) ? Array.prototype.slice.call(arguments, 1) : undefined;
 
-		return this.each(function() {
-			var $this   = $(this);
-			var data    = $this.data('ripples');
+		return this.each(function () {
+			var $this = $(this);
+			var data = $this.data('ripples');
 			var options = $.extend({}, Ripples.DEFAULTS, $this.data(), typeof option == 'object' && option);
 
 			if (!data && typeof option == 'string') return;
@@ -595,7 +609,7 @@
 	// RIPPLES NO CONFLICT
 	// ====================
 
-	$.fn.ripples.noConflict = function() {
+	$.fn.ripples.noConflict = function () {
 		$.fn.ripples = old;
 		return this;
 	}
